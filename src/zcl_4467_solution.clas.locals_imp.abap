@@ -416,7 +416,7 @@ CLASS lcl_carrier IMPLEMENTATION.
        AND connection_details-airport_to_id = i_airport_to_id
        AND flight->get_free_capacity(  ) >= i_cargo.
 
-        DATA(days_later) =  i_from_date - flight->flight_date.
+        DATA(days_later) = flight->flight_date -  i_from_date.
 
         IF days_later < e_days_later. "earlier than previous one?
           e_flight = flight.
