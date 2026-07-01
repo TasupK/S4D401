@@ -5,6 +5,14 @@
 CLASS lcl_passenger_flight DEFINITION .
 
   PUBLIC SECTION.
+    TYPES:
+      BEGIN OF st_connection_details,
+        airport_from_id TYPE /dmo/airport_from_id,
+        airport_to_id   TYPE /dmo/airport_to_id,
+        departure_time  TYPE /dmo/flight_departure_time,
+        arrival_time    TYPE /dmo/flight_departure_time,
+        duration        TYPE i,
+      END OF st_connection_details.
 
     DATA carrier_id    TYPE /dmo/carrier_id       READ-ONLY.
     DATA connection_id TYPE /dmo/connection_id    READ-ONLY.
@@ -15,15 +23,6 @@ CLASS lcl_passenger_flight DEFINITION .
         i_carrier_id    TYPE /dmo/carrier_id
         i_connection_id TYPE /dmo/connection_id
         i_flight_date   TYPE /dmo/flight_date.
-
-    TYPES:
-      BEGIN OF st_connection_details,
-        airport_from_id TYPE /dmo/airport_from_id,
-        airport_to_id   TYPE /dmo/airport_to_id,
-        departure_time  TYPE /dmo/flight_departure_time,
-        arrival_time    TYPE /dmo/flight_departure_time,
-        duration        TYPE i,
-      END OF st_connection_details.
 
     TYPES
       tt_flights TYPE STANDARD TABLE OF REF TO lcl_passenger_flight WITH DEFAULT KEY.
@@ -40,6 +39,7 @@ CLASS lcl_passenger_flight DEFINITION .
     METHODS
       get_description RETURNING VALUE(r_result) TYPE string_table.
 
+    CLASS-METHODS class_constructor.
     CLASS-METHODS
       get_flights_by_carrier
         IMPORTING
@@ -73,9 +73,28 @@ CLASS lcl_passenger_flight DEFINITION .
 
     DATA connection_details TYPE st_connection_details.
 
+    TYPES: BEGIN OF st_connection_buffer,
+             carrier_id      TYPE /dmo/carrier_id,
+             connection_id   TYPE /dmo/connection_id,
+             airport_from_id TYPE /dmo/airport_from_id,
+             airport_to_id   TYPE /dmo/airport_to_id,
+             departure_time  TYPE /dmo/flight_departure_time,
+             arrival_time    TYPE /dmo/flight_departure_time,
+           END OF st_connection_buffer.
+    CLASS-DATA: connections_buffer TYPE TABLE OF st_connection_buffer.
+
 ENDCLASS.
 
 CLASS lcl_passenger_flight IMPLEMENTATION.
+
+  METHOD class_constructor.
+    SELECT
+      FROM /lrn/connection
+      FIELDS carrier_id, connection_id,
+             airport_from_id, airport_to_id, departure_time,
+             arrival_time
+      INTO TABLE @connections_buffer.
+  ENDMETHOD.
 
   METHOD get_flights_by_carrier.
 
@@ -140,16 +159,21 @@ CLASS lcl_passenger_flight IMPLEMENTATION.
           price = flight_raw-price.
       ENDTRY.
 
-* Set connection details
-      SELECT SINGLE
-        FROM /dmo/connection
-      FIELDS airport_from_id, airport_to_id, departure_time, arrival_time
-       WHERE carrier_id    = @carrier_id
-         AND connection_id = @connection_id
-        INTO @connection_details .
+** Set connection details
+*      SELECT SINGLE
+*        FROM /dmo/connection
+*      FIELDS airport_from_id, airport_to_id, departure_time, arrival_time
+*       WHERE carrier_id    = @carrier_id
+*         AND connection_id = @connection_id
+*        INTO CORRESPONDING FIELDS OF @connections_buffer.
 
+      connection_details = CORRESPONDING #(
+                         connections_buffer[
+                           carrier_id    = i_carrier_id
+                           connection_id = i_connection_id ]
+                                      ).
       connection_details-duration = connection_details-arrival_time
-                                  - connection_details-departure_time.
+                                    - connection_details-departure_time.
 
     ENDIF.
   ENDMETHOD.
