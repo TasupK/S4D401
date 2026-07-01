@@ -80,6 +80,7 @@ CLASS lcl_passenger_flight DEFINITION .
              airport_to_id   TYPE /dmo/airport_to_id,
              departure_time  TYPE /dmo/flight_departure_time,
              arrival_time    TYPE /dmo/flight_departure_time,
+             duration        TYPE i,
            END OF st_connection_buffer.
     CLASS-DATA: connections_buffer TYPE TABLE OF st_connection_buffer.
 
@@ -88,12 +89,37 @@ ENDCLASS.
 CLASS lcl_passenger_flight IMPLEMENTATION.
 
   METHOD class_constructor.
+
+    SELECT
+      FROM /lrn/airport
+      FIELDS airport_id, timzone
+    INTO TABLE @DATA(airports).
+
     SELECT
       FROM /lrn/connection
       FIELDS carrier_id, connection_id,
              airport_from_id, airport_to_id, departure_time,
              arrival_time
       INTO TABLE @connections_buffer.
+
+*Convert Timezone
+    DATA(today) = cl_abap_context_info=>get_system_date( ).
+    LOOP AT connections_buffer INTO DATA(connection).
+      CONVERT DATE today
+        TIME connection-departure_time
+        TIME ZONE airports[ airport_id = connection-airport_from_id ]-timzone
+        INTO UTCLONG DATA(departure_utclong).
+    CONVERT DATE today
+      TIME connection-arrival_time
+      TIME ZONE airports[ airport_id = connection-airport_to_id ]-timzone
+      INTO UTCLONG DATA(arrival_utclong).
+
+      connection-duration = utclong_diff(
+                              high = arrival_utclong
+                              low  = departure_utclong
+                                        ) / 60.
+      MODIFY connections_buffer FROM connection TRANSPORTING duration.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD get_flights_by_carrier.
@@ -172,8 +198,8 @@ CLASS lcl_passenger_flight IMPLEMENTATION.
                            carrier_id    = i_carrier_id
                            connection_id = i_connection_id ]
                                       ).
-      connection_details-duration = connection_details-arrival_time
-                                    - connection_details-departure_time.
+*      connection_details-duration = connection_details-arrival_time
+*                                    - connection_details-departure_time.
 
     ENDIF.
   ENDMETHOD.
@@ -197,6 +223,7 @@ CLASS lcl_passenger_flight IMPLEMENTATION.
     APPEND |Occupied Seats: { seats_occ } | TO r_result.
     APPEND |Free Seats:     { seats_free } | TO r_result.
     APPEND |Ticket Price:   { price CURRENCY = currency } { currency } | TO r_result.
+    APPEND |Duration:       { connection_details-duration } minutes| TO r_result.
 
   ENDMETHOD.
 
@@ -217,6 +244,10 @@ CLASS lcl_cargo_flight DEFINITION .
     TYPES
        tt_flights TYPE STANDARD TABLE OF REF TO lcl_cargo_flight WITH DEFAULT KEY.
 
+*  wrong:
+*  DATA carrier_id    TYPE /dmo/connection_id    READ-ONLY.
+*  DATA connection_id TYPE /dmo/carrier_id       READ-ONLY.
+*  correct:
     DATA carrier_id    TYPE /dmo/carrier_id     READ-ONLY.
     DATA connection_id TYPE /dmo/connection_id      READ-ONLY.
     DATA flight_date   TYPE /dmo/flight_date      READ-ONLY.
