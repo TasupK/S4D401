@@ -80,6 +80,8 @@ CLASS lcl_passenger_flight DEFINITION .
              airport_to_id   TYPE /dmo/airport_to_id,
              departure_time  TYPE /dmo/flight_departure_time,
              arrival_time    TYPE /dmo/flight_departure_time,
+             timezone_from   TYPE timezone,
+             timezone_to     TYPE timezone,
              duration        TYPE i,
            END OF st_connection_buffer.
     CLASS-DATA: connections_buffer TYPE TABLE OF st_connection_buffer.
@@ -90,16 +92,20 @@ CLASS lcl_passenger_flight IMPLEMENTATION.
 
   METHOD class_constructor.
 
-    SELECT
-      FROM /lrn/airport
-      FIELDS airport_id, timzone
-    INTO TABLE @DATA(airports).
+*    SELECT
+*      FROM /lrn/airport
+*      FIELDS airport_id, timzone
+*    INTO TABLE @DATA(airports).
 
     SELECT
-      FROM /lrn/connection
+      FROM /lrn/connection AS c
+      LEFT OUTER JOIN /lrn/airport AS f
+      ON c~airport_from_id = f~airport_id
+      LEFT OUTER JOIN /lrn/airport AS t
+      ON c~airport_to_id = t~airport_id
       FIELDS carrier_id, connection_id,
-             airport_from_id, airport_to_id, departure_time,
-             arrival_time
+             airport_from_id, airport_to_id, departure_time, arrival_time,
+             f~timzone AS timezone_from, t~timzone AS timezone_to
       INTO TABLE @connections_buffer.
 
 *Convert Timezone
@@ -107,11 +113,11 @@ CLASS lcl_passenger_flight IMPLEMENTATION.
     LOOP AT connections_buffer INTO DATA(connection).
       CONVERT DATE today
         TIME connection-departure_time
-        TIME ZONE airports[ airport_id = connection-airport_from_id ]-timzone
+        TIME ZONE connection-timezone_from
         INTO UTCLONG DATA(departure_utclong).
     CONVERT DATE today
       TIME connection-arrival_time
-      TIME ZONE airports[ airport_id = connection-airport_to_id ]-timzone
+      TIME ZONE connection-timezone_to
       INTO UTCLONG DATA(arrival_utclong).
 
       connection-duration = utclong_diff(
